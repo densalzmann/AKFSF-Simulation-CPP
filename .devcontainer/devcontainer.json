@@ -1,0 +1,44 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/ubuntu
+{
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"build": {"dockerfile": "Dockerfile"},
+	"containerEnv": {
+		"DISPLAY": "${localEnv:DISPLAY}",
+		"SSH_AUTH_SOCK": "/ssh-agent"
+	},
+	// "mounts": [
+	// 	// "source=/tmp/.X11-unix/,target=/tmp/.X11-unix/,type=bind,consistency=cached",
+	// 	// "source=${localEnv:HOME}/.Xauthority,target=/root/.Xauthority,type=bind,consistency=cached"
+	// ],
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {
+	// 	"desktop-lite": {
+	// 		"password": "vscode",
+	// 		"webPort": "6080",
+	// 		"vncPort": "5901"
+	// 		}
+	// },
+	"runArgs": [
+		"--network=host",
+		"--volume=/tmp/.X11-unix:/tmp/.X11-unix",
+		"--volume=/dev:/dev",
+		"--volume=${localEnv:SSH_AUTH_SOCK}:/ssh-agent"
+	],
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	// "postCreateCommand": "echo test",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		// Add devcontainer-specific settings.json values here, such as:
+		"terminal.integrated.shell.linux": "/bin/zsh",
+		"workbench.colorTheme": "Default Dark+"
+	}
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}
