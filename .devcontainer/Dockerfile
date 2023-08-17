@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y libeigen3-dev \
                                         dbus-x11 \
                                         openssh-server \
                                         openssh-client \
-                                        net-tools
+                                        net-tools \
+                                        valgrind
 RUN echo "debug"
 RUN dbus-uuidgen > /etc/machine-id

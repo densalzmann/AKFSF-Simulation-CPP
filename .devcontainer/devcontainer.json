@@ -4,8 +4,9 @@
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"build": {"dockerfile": "Dockerfile"},
 	"containerEnv": {
-		"DISPLAY": "${localEnv:DISPLAY}",
-		"SSH_AUTH_SOCK": "/ssh-agent"
+		// "DISPLAY": "${localEnv:DISPLAY}" 
+		"DISPLAY": ":0"
+		// "SSH_AUTH_SOCK": "/ssh-agent"
 	},
 	// "mounts": [
 	// 	// "source=/tmp/.X11-unix/,target=/tmp/.X11-unix/,type=bind,consistency=cached",
@@ -22,8 +23,8 @@
 	"runArgs": [
 		"--network=host",
 		"--volume=/tmp/.X11-unix:/tmp/.X11-unix",
-		"--volume=/dev:/dev",
-		"--volume=${localEnv:SSH_AUTH_SOCK}:/ssh-agent"
+		"--volume=/dev:/dev"
+		// "--volume=${localEnv:SSH_AUTH_SOCK}:/ssh-agent"
 	],
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
