@@ -12,14 +12,36 @@ set(SRC_CPP
     src/sensors.cpp
     src/simulation.cpp
     src/utils.cpp
-    src/kalmanfilter.cpp
 )
+
+function(filter_conf type)
+add_executable("${PROJECT_NAME}_${type}"
+        ${SRC_CPP}
+        "src/kalmanfilter_${type}_answer.cpp"
+        )
+target_include_directories( "${PROJECT_NAME}_${type}"
+        PUBLIC ./src)
+target_link_libraries("${PROJECT_NAME}_${type}"
+        SDL2
+        SDL2_ttf
+        Eigen3::Eigen
+        )
+endfunction(filter_conf)
+
+filter_conf(lkf)
+filter_conf(ekf)
+filter_conf(ukf)
 
 add_executable(${PROJECT_NAME}
         ${SRC_CPP}
+        src/kalmanfilter.cpp
         )
 
-target_link_libraries(${PROJECT_NAME}
+
+target_include_directories( "${PROJECT_NAME}"
+        PUBLIC ./src)
+
+target_link_libraries("${PROJECT_NAME}"
         SDL2
         SDL2_ttf
         Eigen3::Eigen

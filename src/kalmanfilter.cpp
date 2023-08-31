@@ -39,6 +39,15 @@ std::vector<VectorXd> generateSigmaPoints(VectorXd state, MatrixXd cov)
     // ----------------------------------------------------------------------- //
     // ENTER YOUR CODE HERE
 
+    int state_num = state.size();
+    double kappa = 3.0 - state_num;
+    MatrixXd sqrtCov = cov.llt().matrixL();
+    sigmaPoints.push_back(state);
+    for(int state_i = 0; state_i < state_num; state_i++)
+    {
+        sigmaPoints.push_back(state + sqrt(kappa + state_num) * sqrtCov.col(state_i));
+        sigmaPoints.push_back(state - sqrt(kappa + state_num) * sqrtCov.col(state_i));
+    }
     // ----------------------------------------------------------------------- //
 
     return sigmaPoints;
@@ -50,7 +59,11 @@ std::vector<double> generateSigmaWeights(unsigned int numStates)
 
     // ----------------------------------------------------------------------- //
     // ENTER YOUR CODE HERE
-
+    double kappa = 3.0 - numStates;
+    double w0 = kappa / (kappa + numStates);
+    weights.push_back(w0);
+    double wi = 0.5 / (numStates + kappa);
+    for(int i = 0; i < 2 * numStates; ++i){weights.push_back(wi);}
     // ----------------------------------------------------------------------- //
 
     return weights;
@@ -62,7 +75,17 @@ VectorXd lidarMeasurementModel(VectorXd aug_state, double beaconX, double beacon
 
     // ----------------------------------------------------------------------- //
     // ENTER YOUR CODE HERE
+    double x = aug_state(0);
+    double y = aug_state(1);
+    double psi = aug_state(2);
+    double range_noise = aug_state(4);
+    double theta_noise = aug_state(5);
 
+    double delta_x = beaconX - x;
+    double delta_y = beaconY - y;
+    double zhat_range = sqrt(delta_x*delta_x + delta_y*delta_y) + range_noise;
+    double zhat_theta = atan2(delta_y,delta_x) - aug_state[2] + theta_noise;
+    z_hat << zhat_range, zhat_theta;
     // ----------------------------------------------------------------------- //
 
     return z_hat;
@@ -74,12 +97,29 @@ VectorXd vehicleProcessModel(VectorXd aug_state, double psi_dot, double dt)
 
     // ----------------------------------------------------------------------- //
     // ENTER YOUR CODE HERE
+    double x = aug_state(0);
+    double y = aug_state(1);
+    double psi = aug_state(2);
+    double V = aug_state(3);
+    double psi_dot_noise = aug_state(4);
+    double accel_noise = aug_state(5);
 
+    double x_new = x + dt * V * cos(psi);
+    double y_new = y + dt * V * sin(psi);
+    double psi_new = psi + dt * (psi_dot+psi_dot_noise);
+    double V_new = V + dt * accel_noise;
+    new_state << x_new,y_new,psi_new,V_new;
     // ----------------------------------------------------------------------- //
 
     return new_state;
 }
 // ----------------------------------------------------------------------- //
+
+void KalmanFilter::handleLidarMeasurements(const std::vector<LidarMeasurement>& dataset, const BeaconMap& map)
+{
+    // Assume No Correlation between the Measurements and Update Sequentially
+    for(const auto& meas : dataset) {handleLidarMeasurement(meas, map);}
+}
 
 void KalmanFilter::handleLidarMeasurement(LidarMeasurement meas, const BeaconMap& map)
 {
@@ -102,8 +142,59 @@ void KalmanFilter::handleLidarMeasurement(LidarMeasurement meas, const BeaconMap
         BeaconData map_beacon = map.getBeaconWithId(meas.id); // Match Beacon with built in Data Association Id
         if (meas.id != -1 && map_beacon.id != -1) // Check that we have a valid beacon match
         {
-           
+        // Generate Measurement Vector
+            VectorXd z = Vector2d::Zero();
+            z << meas.range, meas.theta;
 
+            // Generate Measurement Model Noise Covariance Matrix
+            MatrixXd R = Matrix2d::Zero();
+            R(0,0) = LIDAR_RANGE_STD*LIDAR_RANGE_STD;
+            R(1,1) = LIDAR_THETA_STD*LIDAR_THETA_STD;
+
+            // Augment the State Vector with Noise States
+            int n_x = state.size();
+            int n_v = 2;
+            int n_z = 2;
+            int n_aug = n_x + n_v;
+            VectorXd x_aug = VectorXd::Zero(n_aug);
+            MatrixXd P_aug = MatrixXd::Zero(n_aug, n_aug);
+            x_aug.head(n_x) = state;
+            P_aug.topLeftCorner(n_x,n_x) = cov;
+            P_aug.bottomRightCorner(n_v,n_v) = R;
+
+            // Generate Augmented Sigma Points
+            std::vector<VectorXd> sigma_points = generateSigmaPoints(x_aug, P_aug);
+            std::vector<double> sigma_weights = generateSigmaWeights(n_aug);
+
+            // Measurement Model Augmented Sigma Points
+            std::vector<VectorXd> z_sig;
+            for (const auto& sigma_point : sigma_points){z_sig.push_back(lidarMeasurementModel(sigma_point, map_beacon.x, map_beacon.y));}
+
+            // Calculate Measurement Mean
+            VectorXd z_mean = VectorXd::Zero(n_z);
+            for(unsigned int i = 0; i < z_sig.size(); ++i){z_mean += sigma_weights[i] * z_sig[i];}
+
+            // Calculate Innovation Covariance
+            MatrixXd Py = MatrixXd::Zero(n_z,n_z);
+            for(unsigned int i = 0; i < z_sig.size(); ++i)
+            {
+                VectorXd diff = normaliseLidarMeasurement(z_sig[i] - z_mean);
+                Py += sigma_weights[i] * diff * diff.transpose();
+            }
+
+            // Calculate Cross Covariance
+            MatrixXd Pxy = MatrixXd::Zero(n_x, n_z);
+            for(unsigned int i = 0; i < 2*n_x + 1; ++i)
+            {
+                VectorXd x_diff = normaliseState(sigma_points[i].head(n_x) - state);
+                VectorXd z_diff = normaliseLidarMeasurement(z_sig[i] - z_mean);
+                Pxy += sigma_weights[i] * x_diff * z_diff.transpose();
+            }
+
+            MatrixXd K = Pxy*Py.inverse();
+            VectorXd y = normaliseLidarMeasurement(z - z_mean);
+            state = state + K*y;
+            cov = cov - K * Py * K.transpose();   
         }
         // ----------------------------------------------------------------------- //
 
@@ -128,7 +219,48 @@ void KalmanFilter::predictionStep(GyroMeasurement gyro, double dt)
         // HINT: Do NOT normalise during sigma point calculation!
         // ----------------------------------------------------------------------- //
         // ENTER YOUR CODE HERE
+        
+        // Generate Q Matrix
+        MatrixXd Q = Matrix2d::Zero();
+        Q(0,0) = GYRO_STD*GYRO_STD;
+        Q(1,1) = ACCEL_STD*ACCEL_STD;
 
+        // Augment the State Vector with Noise States
+        int n_x = state.size();
+        int n_w = 2;
+        int n_aug = n_x + n_w;
+        VectorXd x_aug = VectorXd::Zero(n_aug);
+        MatrixXd P_aug = MatrixXd::Zero(n_aug, n_aug);
+        x_aug.head(n_x) = state;
+        P_aug.topLeftCorner(n_x,n_x) = cov;
+        P_aug.bottomRightCorner(n_w,n_w) = Q;
+
+        // Generate Augmented Sigma Points
+        std::vector<VectorXd> sigma_points = generateSigmaPoints(x_aug, P_aug);
+        std::vector<double> sigma_weights = generateSigmaWeights(n_aug);
+
+        // Predict Augmented Sigma Points
+        std::vector<VectorXd> sigma_points_predict;
+        for (const auto& sigma_point : sigma_points)
+        {
+            sigma_points_predict.push_back(vehicleProcessModel(sigma_point, gyro.psi_dot, dt));
+        }
+
+        // Calculate Mean
+        state = VectorXd::Zero(n_x);
+        for(unsigned int i = 0; i < sigma_points_predict.size(); ++i)
+        {
+            state += sigma_weights[i] * sigma_points_predict[i];
+        }
+        state = normaliseState(state);
+
+        // Calculate Covariance
+        cov = MatrixXd::Zero(n_x,n_x);
+        for(unsigned int i = 0; i < sigma_points_predict.size(); ++i)
+        {
+            VectorXd diff = normaliseState(sigma_points_predict[i] - state);
+            cov += sigma_weights[i] * diff * diff.transpose();
+        }
 
         // ----------------------------------------------------------------------- //
 
@@ -188,12 +320,6 @@ void KalmanFilter::handleGPSMeasurement(GPSMeasurement meas)
 
         // ----------------------------------------------------------------------- //
     }             
-}
-
-void KalmanFilter::handleLidarMeasurements(const std::vector<LidarMeasurement>& dataset, const BeaconMap& map)
-{
-    // Assume No Correlation between the Measurements and Update Sequentially
-    for(const auto& meas : dataset) {handleLidarMeasurement(meas, map);}
 }
 
 Matrix2d KalmanFilter::getVehicleStatePositionCovariance()
