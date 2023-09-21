@@ -9,6 +9,18 @@
 #include "kalmanfilter.h"
 #include "utils.h"
 
+auto stream = std::ifstream("../kalmanfilter_config.json.json");
+
+        if (!stream.is_open())
+        {
+            Log::Global(red, "FATAL - Could not open config file!\n");
+            exit(1);
+        }
+
+        config = json::parse(stream);
+        Log::s_debugMode = config["debugMode"].get<json::boolean_t>();
+        g_enableProfiling = config["enableProfiling"].get<json::boolean_t>();
+
 // -------------------------------------------------- //
 // YOU CAN USE AND MODIFY THESE CONSTANTS HERE
 constexpr double ACCEL_STD = 0.05;
