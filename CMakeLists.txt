@@ -17,7 +17,7 @@ set(SRC_CPP
 function(filter_conf type)
 add_executable("${PROJECT_NAME}_${type}"
         ${SRC_CPP}
-        "src/kalmanfilter_${type}_answer.cpp"
+        "src/kalmanfilter_${type}.cpp"
         )
 target_include_directories( "${PROJECT_NAME}_${type}"
         PUBLIC ./src)
